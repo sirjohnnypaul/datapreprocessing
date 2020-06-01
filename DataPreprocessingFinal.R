@@ -1,5 +1,5 @@
 #modules
-install.packages("readr") # read file as string
+install.packages("readr") 
 library(readr)
 install.packages("tidyverse")
 library(tidyverse)
@@ -13,12 +13,14 @@ install.packages("SparseM")
 library(VIM)
 library(SparseM)
 
-
 #get data
-entryData <- read.delim("https://archive.ics.uci.edu/ml/machine-learning-databases/00211/CommViolPredUnnormalizedData.txt",header = TRUE, sep = ",",dec = ".")
+entryData <- read.delim("https://archive.ics.uci.edu/ml/machine-learning-databases/00211/CommViolPredUnnormalizedData.txt",header = FALSE, sep = ",",dec = ".")
 
 #format as DF
 entryData <- as.data.frame(entryData)
+
+#save entry dataset to file entryDataSet.csv
+write.csv(entryData, "./PROJECT/entryData_0.csv", )
 
 #get headers
 headers <- read_file("headers.txt")
@@ -49,10 +51,20 @@ write.csv(entryData, "./PROJECT/entryData.csv", )
 write.csv(results, "./PROJECT/entryDatasetMissingInfo.csv", )
 
 #select 6 columns for further analysis: "rapes","rapesPerPop","arsons","arsonsPerPop","ViolentCrimesPerPop","nonViolPerPop" 
-selectedDataset<- entryData %>% select(132,133,144,145,146,147)
+selectedDataset<- entryData %>% select(8,9,59,63,132,133,144,145,146,147)
+selectedDataset2<- entryData %>% select(6,8,9,16,18,33,57,130,132,146)
+
+countNASelected <- as.data.frame(sapply(selectedDataset, function(x) sum(is.na(x))))
+resultsVal <- countNASelected[,1]
+results <- data.frame(resultsVal)
+results <- as.data.frame(t(results[,1]))
+names(results) <- colnames(selectedDataset)
 
 #save selected dataset to file selectedDataset.csv
 write.csv(selectedDataset, "./PROJECT/selectedDataset.csv", )
+write.csv(selectedDataset2, "./PROJECT/selectedDatasetForecast.csv", )
+new <- na.omit(selectedDataset)
+write.csv(new, "./PROJECT/selectedDatasetOmited.csv", )
 
 #prepare dataset for analysis
 #1:"rapes"
@@ -70,7 +82,7 @@ md.pattern(selectedDataset)
 #-> file Pos 1
 
 #more precise info about misisng data for selected variables
-mice_plot <- aggr(selectedDataset, col=c('green','red'),
+mice_plot <- aggr(selectedDataset, col=c('blue','yellow'),
                   numbers=TRUE, sortVars=TRUE,
                   labels=names(selectedDataset), cex.axis=.7,
                   gap=1, ylab=c("Missing data","Pattern"))
@@ -134,36 +146,59 @@ for (i in 1:length(fieldsNumeric)) {
 }
 dev.off()
 
-#denstity and curver plots => check later why not working
-filename<- paste("./PROJECT/IMAGES/normalCurveCombined.png")
-png(file=filename,width=1200, height=1200)
+new <- datasetToImpute
+new <- na.omit(new)
+
+#denstity 
+filename<- paste("./PROJECT/IMAGES/densityCombined.png")
+png(file=filename,width=600, height=600)
 par(mfrow=c(3, 2))
-colnames <- fields
-for (i in 1:length(fieldsNumeric)) {
-  myhist <- hist(c(selectedDataset[,i]))
-  multiplier <- myhist$counts / myhist$density
-  mydensity <- density(selectedDataset[,i])
-  mydensity$y <- mydensity$y * multiplier[1]
-  
-  plot(myhist)
-  lines(mydensity)
+colnames <- colnames(new)
+for (i in 1:6) {
+  d <- density(new[,i])
+  plot(d, type="n", main=i)
+  polygon(d, col="red", border="gray")
 }
+dev.off()
 
+#normal dist
+new2 <- datasetToImpute
+new2 <- na.omit(new)
 
-#imputations
+filename<- paste("./PROJECT/IMAGES/normalCombined.png")
+png(file=filename,width=2000, height=2000)
+par(mfrow=c(3, 2))
+for (i in 1:6) {
+  x <- new2[,i] 
+  h<-hist(x, breaks=10, col="red", xlab="X", 
+          main=i) 
+  xfit<-seq(min(x),max(x),length=40) 
+  yfit<-dnorm(xfit,mean=mean(x),sd=sd(x)) 
+  yfit <- yfit*diff(h$mids[1:2])*length(x) 
+  lines(xfit, yfit, col="blue", lwd=2)
+}
+dev.off()
 
+###############
+##############
+############
+#IMPUTATIONS
+
+###############
+##############
+############
 #MICE imputation
 #m - number of features
 #maxit - number of iterations
 #method - pmm - related to continuous data
 
-datasetToImpute <- selectedDatasetToImpute
+datasetToImpute <- selectedDataset
 
-imputedDataMICE <- mice(datasetToImpute, m=6, maxit = 5, method = 'pmm', seed = 500) 
+imputedDataMICE <- mice(datasetToImpute[2:7], m=6, maxit = 5, method = 'pmm', seed = 500) 
 summary(imputedDataMICE)
 
 
-imputedDataMICE$imp$rapes
+imputedDataMICE$imp$nonViolPerPop
 #row numbers on the left which were imputed and on the top iteration number
 
 #=> we have to choose iteration which we think is best
@@ -173,10 +208,12 @@ head(completedData,n=15)
 #imputed dataset with MICE
 write.csv(x=completedData,file="./PROJECT/selectedDataImputedMICE.csv", append=FALSE)
 
+datasetToImputeHMISC <- selectedDataset
 
 
-datasetToImputeHMISC <- selectedDatasetToImpute
-
+###############
+##############
+############
 #SECOND -> HMISC
 install.packages("Hmisc")
 install.packages("survival")
@@ -272,11 +309,11 @@ write.csv(x=datasetToImputeHMISC,file="./PROJECT/dataSelectedImputedHMISC.csv")
 head(datasetToImputeHMISC,15)
 
 
-
-
-
+###############
+##############
+############
 #THIRD => MISS FOREST
-datasetToImputeMISSFOREST <- selectedDatasetToImpute
+datasetToImputeMISSFOREST <- selectedDataset
 
 
 install.packages("missForest")
